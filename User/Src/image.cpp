@@ -99,7 +99,7 @@ Image::Image(cv::Mat src_image){
 
 void Image::getEdge(){
 
-    left_edge.resize(r,1000000000);
+    left_edge.resize(r,c);
     right_edge.resize(r,0);
     mid.resize(r,0);
 
@@ -119,7 +119,7 @@ void Image::getEdge(){
 
     //使用广度优先搜索寻找其余位置的左右边界与中线位置
     std::queue<std::pair<int,int>>q;
-    std::vector<std::vector<uchar>>vis(r,std::vector<uchar>(c,0)); 
+    std::vector<std::vector<uchar>>vis(r+5,std::vector<uchar>(c+5,0)); 
     q.push({r-1,mid[r-1]});
 
     int cnt=0;
@@ -129,6 +129,9 @@ void Image::getEdge(){
         //cnt++;
 
         std::pair<int,int> p=q.front();
+
+        min_x=min(min_x,p.first);
+
         q.pop();
         for(int i=0;i<4;i++){
             int x=p.first+dx[i];
@@ -150,9 +153,9 @@ void Image::getEdge(){
 
 void Image::getRoadType(){
     road_type=RoadType::Straight;
-    std::vector<uchar>touch_left(r,0),touch_right(r,0);
+    std::vector<uchar>touch_left(r+5,0),touch_right(r+5,0);
     int cnt_touch_left_right=0;
-    for(int i=0;i<r;i++){
+    for(int i=min_x;i<r;i++){
         if(left_edge[i]==0)     touch_left[i]=1;
         if(right_edge[i]==c-1)  touch_right[i]=1;
         if(touch_left[i] and touch_right[i]){
@@ -164,24 +167,36 @@ void Image::getRoadType(){
         road_type=RoadType::Cross;
         //找到进入十字路口前后位置连线来避免中线异常突变
         std::vector<int>edge_jump;//中线跳变点
-        for(int i=1;i<r;i++){
+        for(int i=min_x+1;i<r;i++){
             if(std::abs(mid[i]-mid[i-1])>checkJump){
                 edge_jump.push_back(i);
             }
         }
-        int cross_begin=std::min((*edge_jump.rbegin())+2,r-1);
-        int cross_end=std::max(0,edge_jump[0]-2);
-        int pos_begin=mid[std::min(r-1,cross_begin+1)];
-        int pos_end=mid[std::max(0,cross_end-1)];
-        double k=(pos_begin-pos_end)/(1.0*(cross_begin-cross_end));
-        for(int i=cross_end;i<=cross_begin;i++){
-            mid[i]=pos_end+k*(i-cross_end);
+
+        if(edge_jump.empty()){
+            std::cerr<<"edge_jump.empty!\n";
+        }
+
+        if(edge_jump.size()>=1){
+
+            if(edge_jump.size()==1){
+                std::cerr<<"edge_jump.size=1\n";
+            }
+
+            int cross_begin=std::min((*edge_jump.rbegin())+2,r-1);
+            int cross_end=std::max(0,edge_jump[0]-2);
+            int pos_begin=mid[std::min(r-1,cross_begin+1)];
+            int pos_end=mid[std::max(0,cross_end-1)];
+            double k=(pos_begin-pos_end)/(1.0*(cross_begin-cross_end));
+            for(int i=cross_end;i<=cross_begin;i++){
+                mid[i]=pos_end+k*(i-cross_end);
+            }
         }
     }else{
         //在画面远处边界出界认为是弯道
         int cnt_touch_left=0;
         int cnt_touch_right=0;
-        for(int i=0;i<=r/2;i++){
+        for(int i=min_x;i<=(r+min_x)/2;i++){
             cnt_touch_left+=touch_left[i];
             cnt_touch_right+=touch_right[i];
         }
@@ -214,9 +229,15 @@ void Image::getRoadType(){
 
 double Image::getDir(){
     int x_0,x_1,y_0,y_1;
-    x_0=r-1-1.0*r*checkDown;
+    x_0=r-1-1.0*(r-min_x)*checkDown;
     x_1=r-1;
     y_0=mid[x_0];
     y_1=mid[x_1];
+
+    if(x_1==x_0){
+        std::cerr<<"road_not_found!\n";
+        return 0;
+    }
+
     return (1.0*(y_1-y_0)/(1.0*(x_1-x_0)));
 };
